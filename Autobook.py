@@ -12,6 +12,7 @@ from selenium.webdriver.support.ui import Select
 from selenium.webdriver.common.action_chains import ActionChains
 # Selenium Options
 from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 from typing import Union, Tuple, Optional
 
 class Booker:
@@ -40,6 +41,7 @@ class Booker:
         self.end_time = end_time
         self.msg = msg
         self.init = True
+        self.booked_dates = []
         assert isinstance(self.username, str)
         assert isinstance(self.password, str)
         assert isinstance(self.headless, bool)
@@ -50,8 +52,6 @@ class Booker:
         self.driver = self._setup_driver()
         self._login()
         self._set_up_page()
-        self.book_all()
-
     def _setup_driver(self) -> webdriver.Chrome:
         """
         Setup the driver
@@ -60,7 +60,7 @@ class Booker:
         options = Options()
         if self.headless:
             options.add_argument("--headless")
-        driver = webdriver.Chrome(options=options)
+        driver = webdriver.Chrome(ChromeDriverManager().install(),options=options)
         driver.get("https://cloud.timeedit.net/umu/web/studres2/")
         return driver
     def _login(self):
@@ -80,14 +80,18 @@ class Booker:
         link = self.driver.find_element(By.XPATH, '//*[@id="contents"]/div[2]/div[5]/div[1]/div[3]/a[2]/div/h2')
         link.click()
         # Search for room
+        time.sleep(self.sleep_duration)
         search = self.driver.find_element(By.XPATH, "//*[@class='objectinput objectinputtext']")
         # Clear search bar
+        time.sleep(self.sleep_duration)
         search.clear()
         search.send_keys(self.room)
         # Click search button
+        time.sleep(self.sleep_duration)
         search_button = self.driver.find_element(By.XPATH, "//*[@class='objectinputsearchbutton objectinputsearchbuttonSecond']")
         search_button.click()
         # Select day calendar
+        time.sleep(self.sleep_duration)
         day_button = self.driver.find_element(By.XPATH,'//*[@class = "weekZoomFirst weekZoomDay clickable"]')
         day_button.click()
     
@@ -104,26 +108,40 @@ class Booker:
             elements = self.driver.find_elements(By.CLASS_NAME, "weekDiv")
             comp_book = False
             for element in elements:
-                try:
+                # try:
+                #     date = element.get_attribute("data-dates")
+                # except:
+                #     continue
+                if element.is_displayed():
                     date = element.get_attribute("data-dates")
-                except:
+                else:
                     continue
                 if date == self._date:
                     width = element.size["width"]
-                    try:
-                        ActionChains(self.driver).move_to_element_with_offset(element, width//2-10, 0).click().perform()
-                        time.sleep(self.sleep_duration)
-                        try:
-                            comp_book = self._book()
-                        except Exception as e:
-                            # TODO: FIgure out what cases this might occure.
-                            print(f"Mid Book Error : {e}")
-                            if not comp_book: # If the booking failed there is probably a popup window that has to be closed.
-                                close_button = self.driver.find_element(By.XPATH,'//*[@id="fancybox-close"]')
-                                time.sleep(self.sleep_duration)
-                                close_button.click()
-                    except Exception as e:
-                        print(f"Could not press bar for date: {date}")
+                    ActionChains(self.driver).move_to_element_with_offset(element, width//2-10, 0).click().perform()
+                    time.sleep(self.sleep_duration)
+                    comp_book = self._book()
+                    if comp_book:
+                        booked += 1
+                        self.booked_dates.append(self._date)            
+                    self._close_window()
+                    # try:
+                    #     ActionChains(self.driver).move_to_element_with_offset(element, width//2-10, 0).click().perform()
+                    #     time.sleep(self.sleep_duration)
+                    #     comp_book = self._book()
+                    #     if comp_book:
+                    #         booked += 1
+                    #         self.booked_dates.append(self._date)            
+                    #     self._close_window()
+                    #     # try:
+                    #     #     comp_book = self._book()
+                    #     # except Exception as e:
+                    #     #     # TODO: FIgure out what cases this might occure.
+                    #     #     print(f"Mid Book Error : {e}")
+                    #     #     if not comp_book: # If the booking failed there is probably a popup window that has to be closed.
+                    #     #         self._close_window()
+                    # except Exception as e:
+                    #     print(f"Could not press bar for date: {date}")
                     # TODO: Send message to bocker that the specified date has been booked.
                     # For now print message to terminal.
                     print(f"{'Completed' if comp_book else 'Failed'} to book: {date}")
@@ -139,25 +157,27 @@ class Booker:
                 at_end = True
         return booked
     def _set_interval(self)->bool:
-        try:
-            time_start_list = self.driver.find_element(By.XPATH,("//select[@class = 'timedrop timeHourStart']"))
+        # try:
+        time_start_list = self.driver.find_element(By.XPATH,("//select[@class = 'timedrop timeHourStart']"))
             # assert time_start_list is not None and time_start_list.is_displayed(), "Time start list is not displayed"
+        if time_start_list is not None and time_start_list.is_displayed():
             time_start_list.click()
-        except Exception as e:
-            print(f"Error: {e}")
+        else:
             return False
+        # except Exception as e:
+        #     print(f"Error: {e}")
         # Set start hour
         time_start_list.send_keys(self.start_time)
         time_start_list.send_keys(Keys.RETURN)
         time_start_minute = self.driver.find_element(By.XPATH,("//select[@class = 'timedrop timeMinuteStart']"))
         time_start_minute.send_keys("15") # Always 15 minutes, academic time
-        time_start_minute.send_keys(Keys.RETURN)
+        # time_start_minute.send_keys(Keys.RETURN)
         time_end_list = self.driver.find_element(By.XPATH,("//select[@class = 'timedrop timeHourEnd']"))
         time_end_list.send_keys(self.end_time)
-        time_end_list.send_keys(Keys.RETURN)
+        # time_end_list.send_keys(Keys.RETURN)
         time_end_minute = self.driver.find_element(By.XPATH,("//select[@class = 'timedrop timeMinuteEnd']"))
         time_end_minute.send_keys("00") # Always 00 minutes, academic time
-        time_end_minute.send_keys(Keys.RETURN)
+        # time_end_minute.send_keys(Keys.RETURN)
         return True # Success
     def _set_institution(self):
         # Set the institution
@@ -165,8 +185,11 @@ class Booker:
         for cls in search_classes:
             if cls.text.startswith("Insti"):
                 cls.click()
+                time.sleep(self.sleep_duration)
                 inst_list =self.driver.find_element(By.XPATH,("//*[@class = 'infotable infotablenormal']"))
+                time.sleep(self.sleep_duration)
                 inst_list.click()
+                self.init = False
     def _book(self)->bool:
         """
         Book a single time
@@ -174,7 +197,6 @@ class Booker:
         """
         if self.init:
             self._set_institution()
-            self.init = False
         success = self._set_interval() # Set the interval that we want to book
         if not success:
             return False
@@ -182,15 +204,52 @@ class Booker:
         # self._set_institution()
         # Add description of the booking
         public_comment =self.driver.find_element(By.XPATH, '//*[@class = "reset editfield niceinput resinputfield"]')
+        public_comment.clear()
         public_comment.send_keys(self.msg)
         book_button = self.driver.find_element(By.XPATH,'//*[@class="continueRes greenbutton greenbottom"]')
         book_button.click()
-        time.sleep(self.sleep_duration)
-        close_button = self.driver.find_element(By.XPATH,'//*[@class="topclose"]')
-        close_button.click()
+        time.sleep(self.sleep_duration+0.2)
+        if book_button.is_displayed():
+            return False
+        # self._close_window()
         return True
+    def _close_window(self):
+        close_button = self.driver.find_element(By.XPATH,'//*[@class="topclose"]')
+        if close_button.is_displayed():
+            close_button.click()
+        else:
+            close_button = self.driver.find_element(By.XPATH,'//*[@id="fancybox-close"]')
+            if close_button.is_displayed():
+                close_button.click()
+    def display_booked_dates(self):
+        print("Dates booked:")
+        for date in self.booked_dates:
+            # The date is an int in the format YYYYMMDD
+            year = date[:4]
+            month = date[4:6]
+            day = date[6:]
+            print(f"{day}/{month}/{year} time: {self.start_time}-{self.end_time}")
+    def pause(self):
+        input("Press any key to continue...")
+    def close(self):
+        self.driver.close()
+    def __del__(self):
+        self.driver.close()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.driver.close()
+    def __enter__(self):
+        return self
+    def __str__(self):
+        return f"Booker: {self.username}"
+    def __repr__(self):
+        return f"Booker: {self.username}"        
 if __name__=="__main__":
-    b = Booker(username="thjo0148",
-        password="",
+    b = Booker(username="*****",
+        password="*****",
         start_time="16",end_time="17",
+        msg="43616e2774206265617420757321202354460d0a0d0a0d0a",
         headless=False)
+    b.book_all()
+    b.display_booked_dates()
+    b.pause()
+    b.close()
